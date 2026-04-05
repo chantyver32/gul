@@ -10,7 +10,9 @@ from audio_recorder_streamlit import audio_recorder
 # --- CONFIGURACIÓN DE SEGURIDAD PARA LA NUBE ---
 # Aquí le decimos que lea la clave desde los "Secrets" de Streamlit
 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-model = genai.GenerativeModel('gemini-1.5-flash')
+
+# Usamos la etiqueta "latest" para asegurar la compatibilidad
+model = genai.GenerativeModel('gemini-1.5-flash-latest')
 
 # --- BASE DE DATOS (SQLite) ---
 def init_db():
