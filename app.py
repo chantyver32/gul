@@ -5,9 +5,11 @@ from gtts import gTTS
 import tempfile
 import os
 import pandas as pd
-from audio_recorder_streamlit import audio_recorder
 
-# --- BASE DE DATOS (SQLite) ---
+# --- CONFIGURACIÓN DE PÁGINA (Debe ir primero) ---
+st.set_page_config(page_title="English Tutor Pro", page_icon="⚡", layout="wide")
+
+# --- BASE DE DATOS ---
 def init_db():
     conn = sqlite3.connect('english_practice.db')
     c = conn.cursor()
@@ -27,6 +29,11 @@ def save_to_db(conn, user_text, correction):
     c.execute("INSERT INTO practice_log (user_text, correction) VALUES (?, ?)", (user_text, correction))
     conn.commit()
 
+def get_practice_count(conn):
+    c = conn.cursor()
+    c.execute("SELECT COUNT(*) FROM practice_log")
+    return c.fetchone()[0]
+
 # --- FUNCIONES DE AUDIO ---
 def transcribe_audio(audio_bytes):
     r = sr.Recognizer()
@@ -37,7 +44,6 @@ def transcribe_audio(audio_bytes):
     try:
         with sr.AudioFile(temp_audio_path) as source:
             audio_data = r.record(source)
-            # Reconoce el audio esperando que hables en inglés
             text = r.recognize_google(audio_data, language="en-US")
             return text
     except sr.UnknownValueError:
@@ -53,36 +59,62 @@ def generate_tts(text):
         tts.save(temp_audio.name)
         return temp_audio.name
 
-# --- INTERFAZ VISUAL ---
-st.set_page_config(page_title="Práctica de Inglés", page_icon="🗣️")
-st.title("🗣️ Práctica de Pronunciación")
-st.write("Graba tu voz en inglés. Si el sistema transcribe correctamente lo que querías decir, ¡tu pronunciación es buena!")
-
+# --- INICIALIZACIÓN ---
 conn = init_db()
 
-audio_bytes = audio_recorder(text="Haz clic en el micrófono para grabar", recording_color="#e83a3a", neutral_color="#6aa36f")
+# --- SIDEBAR: PANEL DE CONTROL ---
+with st.sidebar:
+    st.header("📊 Tu Progreso")
+    total_practices = get_practice_count(conn)
+    st.metric(label="Prácticas Totales", value=total_practices)
+    
+    st.divider()
+    st.subheader("📚 Historial de Prácticas")
+    if st.button("Cargar historial", use_container_width=True):
+        df = pd.read_sql_query("SELECT timestamp as Fecha, user_text as Frase FROM practice_log ORDER BY timestamp DESC", conn)
+        st.dataframe(df, hide_index=True, use_container_width=True)
 
-if audio_bytes:
-    st.audio(audio_bytes, format="audio/wav")
+# --- ÁREA PRINCIPAL ---
+st.title("⚡ Tutor de Pronunciación Pro")
+st.markdown("Mejora tu fluidez en inglés. Graba tu voz, valida la transcripción automática y compara con la pronunciación nativa.")
+st.write("") # Espaciador
+
+# Dividimos la pantalla en dos columnas
+col1, col2 = st.columns([1, 1.2], gap="large")
+
+with col1:
+    st.markdown("### 🎙️ 1. Graba tu voz")
+    st.info("Habla en inglés de forma clara y natural.")
     
-    with st.spinner("Transcribiendo..."):
-        user_text = transcribe_audio(audio_bytes)
+    # EL NUEVO BOTÓN NATIVO DE STREAMLIT (Mucho más pro)
+    audio_file = st.audio_input("Haz clic para empezar a grabar")
+
+with col2:
+    st.markdown("### ⚙️ 2. Análisis en tiempo real")
     
-    if user_text and not user_text.startswith("Error") and not user_text.startswith("No se pudo"):
-        st.success(f"**El sistema entendió:** {user_text}")
-        
-        st.markdown("### 🎧 Escucha la pronunciación nativa")
-        audio_file = generate_tts(user_text) 
-        st.audio(audio_file, format="audio/mp3")
-        
-        # Guardamos en la base de datos (dejamos un texto por defecto en la columna de corrección)
-        save_to_db(conn, user_text, "Modo sin IA - Solo transcripción")
-        st.toast("¡Práctica guardada!")
+    if audio_file is not None:
+        # Usamos un contenedor con borde para que parezca una "tarjeta" de resultados
+        with st.container(border=True):
+            with st.spinner("Procesando tu voz..."):
+                # st.audio_input devuelve un archivo, usamos .read() para obtener los bytes
+                user_text = transcribe_audio(audio_file.read()) 
+            
+            if user_text and not user_text.startswith("Error") and not user_text.startswith("No se pudo"):
+                st.success("¡Transcripción exitosa!")
+                
+                st.markdown("**El sistema entendió:**")
+                st.markdown(f"> *{user_text}*")
+                
+                st.divider()
+                st.markdown("**🎧 Escucha la pronunciación nativa:**")
+                audio_tts = generate_tts(user_text) 
+                st.audio(audio_tts, format="audio/mp3")
+                
+                save_to_db(conn, user_text, "Modo Pro")
+            else:
+                st.error(user_text)
     else:
-        st.error(user_text)
-
-st.divider()
-st.subheader("📚 Tu Historial")
-if st.button("Ver mis prácticas anteriores"):
-    df = pd.read_sql_query("SELECT * FROM practice_log ORDER BY timestamp DESC", conn)
-    st.dataframe(df, use_container_width=True)
+        # Estado vacío cuando no hay grabación
+        with st.container(border=True):
+            st.write("Esperando tu grabación...")
+            st.caption("El análisis de tu pronunciación aparecerá en este panel.")
