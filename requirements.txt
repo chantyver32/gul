@@ -2,5 +2,4 @@ streamlit
 SpeechRecognition
 gTTS
 audio-recorder-streamlit
-google-generativeai>=0.7.0
 pandas
